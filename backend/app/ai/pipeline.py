@@ -45,6 +45,8 @@ def _get_sbert_model():
 
 
 def extract_text_from_pdf(path: str) -> str:
+    """Try pdfplumber first, fall back to PyMuPDF (fitz) for image-heavy PDFs."""
+    # Attempt 1: pdfplumber
     try:
         import pdfplumber
         text = []
@@ -53,9 +55,29 @@ def extract_text_from_pdf(path: str) -> str:
                 t = page.extract_text()
                 if t:
                     text.append(t)
-        return "\n".join(text)
+        result = "\n".join(text).strip()
+        if result:
+            return result
     except Exception:
-        return ""
+        pass
+
+    # Attempt 2: PyMuPDF (fitz) — handles more PDF types
+    try:
+        import fitz  # pymupdf
+        doc = fitz.open(path)
+        text = []
+        for page in doc:
+            t = page.get_text()
+            if t:
+                text.append(t)
+        doc.close()
+        result = "\n".join(text).strip()
+        if result:
+            return result
+    except Exception:
+        pass
+
+    return ""
 
 
 def compute_semantic_similarity(resume_text: str, jd_text: str) -> float:

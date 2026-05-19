@@ -11,6 +11,18 @@ api.interceptors.request.use(cfg => {
   return cfg
 })
 
+// Auto-clear token and redirect on 401
+api.interceptors.response.use(
+  res => res,
+  err => {
+    if (err?.response?.status === 401) {
+      localStorage.removeItem('token')
+      window.location.href = '/login'
+    }
+    return Promise.reject(err)
+  }
+)
+
 // Auth
 export async function register(name, email, password) {
   const res = await api.post('/auth/register', { name, email, password })

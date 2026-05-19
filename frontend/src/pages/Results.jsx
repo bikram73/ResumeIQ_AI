@@ -1,24 +1,23 @@
 import React, { useEffect, useState } from 'react'
-import { useParams, useLocation, Link } from 'react-router-dom'
+import { useParams, Link } from 'react-router-dom'
 import { getResults, getSuggestions } from '../api'
 import ScoreCard from '../components/ScoreCard'
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts'
 
 export default function Results() {
   const { id } = useParams()
-  const location = useLocation()
-  const [result, setResult] = useState(location.state?.result || null)
+  const [result, setResult] = useState(null)
   const [suggestions, setSuggestions] = useState([])
-  const [loading, setLoading] = useState(!result)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (!result) {
-      getResults(id)
-        .then(data => setResult(data))
-        .catch(() => setError('Could not load results.'))
-        .finally(() => setLoading(false))
-    }
+    // Always fetch fresh from server — never trust cached location.state
+    getResults(id)
+      .then(data => setResult(data))
+      .catch(() => setError('Could not load results.'))
+      .finally(() => setLoading(false))
+
     getSuggestions(id)
       .then(data => setSuggestions(data.suggestions || []))
       .catch(() => setSuggestions([]))

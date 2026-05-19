@@ -49,7 +49,7 @@ export default function Upload() {
     setAnalyzing(true)
     try {
       const res = await analyze(analysisId, jd)
-      navigate(`/results/${res.analysis_id}`, { state: { result: res } })
+      navigate(`/results/${res.analysis_id}`)
     } catch (err) {
       setError(err?.response?.data?.error || 'Analysis failed.')
     } finally {
