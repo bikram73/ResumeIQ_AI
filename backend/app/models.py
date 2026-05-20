@@ -20,6 +20,7 @@ class Resume(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     resume_url = Column(String)
+    job_title = Column(String, nullable=True)       # role the user applied for
     ats_score = Column(Float, nullable=True)
     semantic_score = Column(Float, nullable=True)
     keyword_match = Column(Float, nullable=True)

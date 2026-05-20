@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getResumeHistory } from '../api'
+import { getResumeHistory, deleteResume } from '../api'
 import { useAuth } from '../AuthContext'
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from 'recharts'
 import ScoreCard from '../components/ScoreCard'
@@ -9,12 +9,20 @@ export default function Dashboard() {
   const { user } = useAuth()
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(true)
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [resumeToDeleteId, setResumeToDeleteId] = useState(null);
 
   useEffect(() => {
     getResumeHistory()
-      .then(data => setHistory(data))
-      .catch(() => setHistory([]))
-      .finally(() => setLoading(false))
+      .then(data => {
+        console.log("Resume History Data:", data); // Log the received data
+        setHistory(data);
+      })
+      .catch(error => {
+        console.error("Error fetching resume history:", error); // Log any errors
+        setHistory([]);
+      })
+      .finally(() => setLoading(false));
   }, [])
 
   const latest = history[0] || null
@@ -30,6 +38,30 @@ export default function Dashboard() {
     name: `Resume ${i + 1}`,
     score: r.ats_score || 0,
   }))
+
+  const handleDelete = (resumeId) => {
+    setResumeToDeleteId(resumeId);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDelete = async () => {
+    if (resumeToDeleteId) {
+      try {
+        await deleteResume(resumeToDeleteId);
+        setHistory(history.filter(r => r.id !== resumeToDeleteId));
+        setShowDeleteModal(false);
+        setResumeToDeleteId(null);
+      } catch (error) {
+        console.error('Error deleting resume:', error);
+        alert('Failed to delete resume. Please try again.');
+      }
+    }
+  };
+
+  const cancelDelete = () => {
+    setShowDeleteModal(false);
+    setResumeToDeleteId(null);
+  };
 
   return (
     <div className="page-wrapper">
@@ -103,7 +135,7 @@ export default function Dashboard() {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
                   <thead>
                     <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                      {['#', 'Uploaded', 'ATS Score', 'Semantic', 'Action'].map(h => (
+                      {['#', 'Job Title', 'Uploaded', 'ATS Score', 'Semantic', 'Action', 'Delete'].map(h => (
                         <th key={h} style={{ padding: '0.75rem 1rem', textAlign: 'left', color: '#64748B', fontWeight: 500 }}>{h}</th>
                       ))}
                     </tr>
@@ -112,6 +144,7 @@ export default function Dashboard() {
                     {history.map((r, i) => (
                       <tr key={r.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                         <td style={{ padding: '0.85rem 1rem', color: '#64748B' }}>{i + 1}</td>
+                        <td style={{ padding: '0.85rem 1rem', color: '#CBD5E1' }}>{r.job_title || 'N/A'}</td>
                         <td style={{ padding: '0.85rem 1rem', color: '#CBD5E1' }}>
                           {new Date(r.uploaded_at).toLocaleDateString()}
                         </td>
@@ -131,6 +164,21 @@ export default function Dashboard() {
                             View Results →
                           </Link>
                         </td>
+                        <td style={{ padding: '0.85rem 1rem' }}>
+                          <button
+                            onClick={() => handleDelete(r.id)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: '#EF4444',
+                              cursor: 'pointer',
+                              fontSize: '0.85rem',
+                              fontWeight: 600,
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -138,6 +186,48 @@ export default function Dashboard() {
               </div>
             </div>
           </>
+        )}
+        
+        {showDeleteModal && (
+          <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 1000
+          }}>
+            <div style={{
+              backgroundColor: '#1E293B', padding: '2rem', borderRadius: '8px', textAlign: 'center',
+              boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)', maxWidth: '400px', width: '90%', border: '1px solid rgba(255,255,255,0.1)'
+            }}>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '1rem', color: '#CBD5E1' }}>Confirm Deletion</h3>
+              <p style={{ color: '#94A3B8', marginBottom: '1.5rem' }}>Are you sure you want to delete this resume? This action cannot be undone.</p>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem' }}>
+                <button
+                  onClick={cancelDelete}
+                  style={{
+                    padding: '0.75rem 1.5rem', borderRadius: '6px', border: '1px solid #64748B', backgroundColor: 'transparent',
+                    color: '#CBD5E1', cursor: 'pointer', fontSize: '1rem', fontWeight: 500,
+                    transition: 'all 0.2s ease-in-out',
+                  }}
+                  onMouseEnter={e => e.target.style.backgroundColor = '#334155'}
+                  onMouseLeave={e => e.target.style.backgroundColor = 'transparent'}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDelete}
+                  style={{
+                    padding: '0.75rem 1.5rem', borderRadius: '6px', border: 'none', backgroundColor: '#EF4444',
+                    color: '#FFFFFF', cursor: 'pointer', fontSize: '1rem', fontWeight: 500,
+                    transition: 'all 0.2s ease-in-out',
+                  }}
+                  onMouseEnter={e => e.target.style.backgroundColor = '#DC2626'}
+                  onMouseLeave={e => e.target.style.backgroundColor = '#EF4444'}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

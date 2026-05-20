@@ -79,3 +79,13 @@ export async function getRoleRecommendations(analysisId) {
   const res = await api.get(`/roles/${analysisId}`)
   return res.data
 }
+
+export async function rescoreResume(analysisId) {
+  const res = await api.post(`/rescore/${analysisId}`)
+  return res.data
+}
+
+export async function deleteResume(resumeId) {
+  const res = await api.delete(`/resumes/${resumeId}`)
+  return res.data
+}
