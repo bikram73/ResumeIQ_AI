@@ -1,328 +1,241 @@
+"""
+ResumeIQ AI Pipeline — Backend entry point.
+
+Delegates to ml-models package for all ML logic:
+  - ml_models.parsers     → text extraction, skill/section detection
+  - ml_models.embeddings  → semantic similarity, keyword overlap
+  - ml_models.scoring     → ATS score with multi-granularity breakdown
+  - ml_models.recommendation → suggestions, role recommendations, skill gap
+"""
+from __future__ import annotations
+import sys
 import os
-import re
 from typing import Optional, Dict, Any, List
 
+# Make ml-models importable from backend
+_ML_MODELS_PATH = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "ml-models")
+)
+if _ML_MODELS_PATH not in sys.path:
+    sys.path.insert(0, _ML_MODELS_PATH)
+
+# ── Import ml-models modules ──────────────────────────────────────────────────
 try:
-    from sklearn.feature_extraction.text import TfidfVectorizer
-    import numpy as np
-except Exception:
-    TfidfVectorizer = None
-    np = None
-
-_sbert_model = None
-
-COMMON_SKILLS = {
-    "python", "java", "c++", "c#", "javascript", "react", "node.js", "sql",
-    "aws", "docker", "kubernetes", "machine learning", "fastapi",
-    "html", "css", "typescript", "nlp", "deep learning", "mongodb",
-    "postgresql", "git", "linux", "agile", "scrum", "tensorflow", "pytorch",
-    "express", "django", "flask", "pandas", "numpy", "spacy", "redis",
-    "graphql", "rest api", "microservices", "ci/cd", "azure", "gcp",
-    "data analysis", "tableau", "power bi", "excel", "spark", "hadoop",
-    "selenium", "junit", "pytest", "spring boot", "angular", "vue.js",
-}
-
-SECTION_KEYWORDS = {
-    "experience": ["experience", "work history", "employment", "professional background"],
-    "education": ["education", "academic", "degree", "university", "college"],
-    "skills": ["skills", "technical skills", "competencies", "technologies"],
-    "projects": ["projects", "portfolio", "work samples"],
-    "certifications": ["certifications", "certificates", "credentials", "licenses"],
-    "summary": ["summary", "objective", "profile", "about me"],
-}
+    from parsers.extractor import (
+        extract_text, extract_skills, extract_skills_by_category,
+        detect_sections, extract_contact_info, parse_resume,
+    )
+    from embeddings.semantic import compute_similarity, keyword_overlap, tfidf_similarity
+    from scoring.ats_scorer import compute_ats_score
+    from recommendation.engine import generate_suggestions, recommend_roles, skill_gap_report
+    _ML_AVAILABLE = True
+except ImportError as e:
+    _ML_AVAILABLE = False
+    _ML_IMPORT_ERROR = str(e)
 
 
-def _get_sbert_model():
-    global _sbert_model
-    if _sbert_model is not None:
-        return _sbert_model
-    try:
-        from sentence_transformers import SentenceTransformer
-        _sbert_model = SentenceTransformer("all-MiniLM-L6-v2")
-    except Exception:
-        _sbert_model = None
-    return _sbert_model
+# ── Fallback implementations (if ml-models import fails) ─────────────────────
 
-
-def extract_text_from_pdf(path: str) -> str:
-    """Try pdfplumber first, fall back to PyMuPDF (fitz) for image-heavy PDFs."""
-    # Attempt 1: pdfplumber
+def _fallback_extract_text(path: str) -> str:
     try:
         import pdfplumber
-        text = []
+        pages = []
         with pdfplumber.open(path) as pdf:
             for page in pdf.pages:
                 t = page.extract_text()
                 if t:
-                    text.append(t)
-        result = "\n".join(text).strip()
+                    pages.append(t)
+        result = "\n".join(pages).strip()
         if result:
             return result
     except Exception:
         pass
-
-    # Attempt 2: PyMuPDF (fitz) — handles more PDF types
     try:
-        import fitz  # pymupdf
+        import fitz
         doc = fitz.open(path)
-        text = []
-        for page in doc:
-            t = page.get_text()
-            if t:
-                text.append(t)
+        pages = [p.get_text() for p in doc]
         doc.close()
-        result = "\n".join(text).strip()
-        if result:
-            return result
+        return "\n".join(p for p in pages if p).strip()
     except Exception:
-        pass
-
-    return ""
+        return ""
 
 
-def compute_semantic_similarity(resume_text: str, jd_text: str) -> float:
-    model = _get_sbert_model()
-    if model is None:
-        return 0.0
+_FALLBACK_SKILLS = {
+    "python", "java", "javascript", "react", "node.js", "sql", "aws",
+    "docker", "kubernetes", "machine learning", "fastapi", "html", "css",
+    "typescript", "nlp", "deep learning", "mongodb", "postgresql", "git",
+    "linux", "agile", "scrum", "tensorflow", "pytorch", "express", "django",
+    "flask", "pandas", "numpy", "spacy", "redis", "graphql", "rest api",
+    "microservices", "ci/cd", "azure", "gcp", "data analysis", "tableau",
+    "power bi", "excel", "spark", "hadoop", "selenium", "pytest",
+    "spring boot", "angular", "vue.js", "c++", "c#", "typescript",
+}
+
+import re as _re
+
+def _fallback_extract_skills(text: str) -> List[str]:
+    text_lower = text.lower()
+    return sorted(s for s in _FALLBACK_SKILLS
+                  if _re.search(r'\b' + _re.escape(s) + r'\b', text_lower))
+
+
+def _fallback_tfidf(a: str, b: str) -> float:
     try:
-        from sentence_transformers import util
-        emb1 = model.encode(resume_text, convert_to_tensor=True)
-        emb2 = model.encode(jd_text, convert_to_tensor=True)
-        return float(util.cos_sim(emb1, emb2).item())
+        from sklearn.feature_extraction.text import TfidfVectorizer
+        import numpy as np
+        vec = TfidfVectorizer(ngram_range=(1, 2), stop_words="english").fit([a, b])
+        m = vec.transform([a, b]).toarray()
+        denom = np.linalg.norm(m[0]) * np.linalg.norm(m[1])
+        return float(np.dot(m[0], m[1]) / denom) if denom else 0.0
     except Exception:
         return 0.0
 
 
-def tfidf_keyword_match(resume_text: str, jd_text: str) -> float:
-    if TfidfVectorizer is None or np is None:
-        return 0.0
-    try:
-        vec = TfidfVectorizer().fit([resume_text, jd_text])
-        m = vec.transform([resume_text, jd_text]).toarray()
-        a, b = m[0], m[1]
-        denom = np.linalg.norm(a) * np.linalg.norm(b)
-        if denom == 0:
-            return 0.0
-        return float(np.dot(a, b) / denom)
-    except Exception:
-        return 0.0
+def _fallback_quality(text: str, skills: List[str]) -> float:
+    text_lower = text.lower()
+    words = text.split()
+    verbs = ["developed","built","designed","implemented","created","led","managed",
+             "optimized","improved","delivered","deployed","automated","reduced",
+             "increased","achieved","analyzed","launched","integrated","engineered"]
+    verb_score = min(1.0, sum(1 for v in verbs if v in text_lower) / 8.0)
+    skill_score = min(1.0, len(skills) / 15.0)
+    richness = min(1.0, (len(set(w.lower() for w in words)) / max(len(words), 1)) / 0.65) if words else 0.0
+    return round(0.40 * skill_score + 0.30 * verb_score + 0.30 * richness, 4)
 
 
-def layout_score(path: str, resume_text: str) -> float:
-    """Heuristic layout scoring based on section presence and file size."""
-    score = 0.0
-    text_lower = resume_text.lower()
-
-    # Check for key sections (40% of layout score)
-    sections_found = 0
-    for section, keywords in SECTION_KEYWORDS.items():
-        if any(kw in text_lower for kw in keywords):
-            sections_found += 1
-    section_score = sections_found / len(SECTION_KEYWORDS)
-    score += 0.4 * section_score
-
-    # File size heuristic — reasonable resume is 20KB–200KB (40%)
+def _fallback_layout(path: str, text: str) -> float:
+    text_lower = text.lower()
+    sections = ["experience", "education", "skills", "summary", "projects", "certifications"]
+    sec_score = sum(1 for s in sections if s in text_lower) / len(sections)
     try:
         size = os.path.getsize(path)
-        if 10_000 <= size <= 300_000:
-            size_score = 1.0
-        elif size < 10_000:
-            size_score = size / 10_000
-        else:
-            size_score = max(0.3, 1.0 - (size - 300_000) / 500_000)
-        score += 0.4 * size_score
+        size_score = 1.0 if 10_000 <= size <= 300_000 else (size / 10_000 if size < 10_000 else max(0.3, 1.0 - (size - 300_000) / 500_000))
     except Exception:
-        score += 0.2
-
-    # Text length heuristic — good resume has 300–1500 words (20%)
-    word_count = len(resume_text.split())
-    if 300 <= word_count <= 1500:
-        word_score = 1.0
-    elif word_count < 300:
-        word_score = word_count / 300
-    else:
-        word_score = max(0.5, 1.0 - (word_count - 1500) / 2000)
-    score += 0.2 * word_score
-
-    return round(min(1.0, score), 4)
+        size_score = 0.5
+    wc = len(text.split())
+    wc_score = 1.0 if 300 <= wc <= 1500 else (wc / 300 if wc < 300 else max(0.5, 1.0 - (wc - 1500) / 2000))
+    return round(min(1.0, 0.4 * sec_score + 0.4 * size_score + 0.2 * wc_score), 4)
 
 
-def extract_skills(text: str) -> List[str]:
-    text_lower = text.lower()
-    found = set()
-    for skill in COMMON_SKILLS:
-        if re.search(r'\b' + re.escape(skill) + r'\b', text_lower):
-            found.add(skill)
-    return sorted(found)
-
-
-def resume_quality_score(resume_text: str) -> float:
-    """
-    When no JD is provided, score the resume on its own quality:
-    - Skill density: how many known skills are present
-    - Action verb usage: strong verbs indicate well-written bullets
-    - Content richness: word variety via TF-IDF self-score
-    Returns a 0.0–1.0 score.
-    """
-    if not resume_text:
-        return 0.0
-
-    text_lower = resume_text.lower()
-    words = resume_text.split()
-    score = 0.0
-
-    # Skill density (40%): more recognized skills = better resume
-    found_skills = extract_skills(resume_text)
-    skill_score = min(1.0, len(found_skills) / 15.0)  # 15+ skills = full score
-    score += 0.40 * skill_score
-
-    # Action verbs (30%): strong resume language
-    action_verbs = [
-        "developed", "built", "designed", "implemented", "created", "led",
-        "managed", "optimized", "improved", "delivered", "architected",
-        "deployed", "automated", "reduced", "increased", "achieved",
-        "collaborated", "analyzed", "researched", "published", "launched",
-        "integrated", "maintained", "tested", "debugged", "refactored",
-    ]
-    verb_hits = sum(1 for v in action_verbs if v in text_lower)
-    verb_score = min(1.0, verb_hits / 8.0)  # 8+ action verbs = full score
-    score += 0.30 * verb_score
-
-    # Content richness (30%): unique word ratio (vocabulary diversity)
-    if words:
-        unique_ratio = min(1.0, len(set(w.lower() for w in words)) / max(len(words), 1))
-        # Good resumes have ~60-80% unique word ratio
-        richness = min(1.0, unique_ratio / 0.65)
-        score += 0.30 * richness
-
-    return round(min(1.0, score), 4)
-
+# ── Public API ────────────────────────────────────────────────────────────────
 
 def analyze_resume(resume_path: str, jd_text: Optional[str] = "") -> Dict[str, Any]:
-    resume_text = extract_text_from_pdf(resume_path)
-
-    resume_skills = extract_skills(resume_text)
+    """
+    Full resume analysis. Uses ml-models if available, falls back to
+    inline implementations otherwise.
+    """
     has_jd = bool(jd_text and jd_text.strip())
 
-    jd_skills = extract_skills(jd_text) if has_jd else []
-    missing_skills = sorted(set(jd_skills) - set(resume_skills))
+    if _ML_AVAILABLE:
+        # ── ML-models path ────────────────────────────────────────────────────
+        parsed = parse_resume(resume_path)
+        resume_text = parsed["text"]
+        skills = parsed["skills"]
+        skills_by_cat = parsed["skills_by_category"]
+        sections_found = parsed["sections_found"]
+        contact_info = parsed["contact_info"]
 
-    semantic = 0.0
-    keyword = 0.0
+        ats_result = compute_ats_score(
+            resume_path=resume_path,
+            resume_text=resume_text,
+            jd_text=jd_text or "",
+            resume_skills=skills,
+            sections_found=sections_found,
+        )
 
-    if has_jd and resume_text:
-        # JD provided: compare resume against job description
-        mode = os.getenv("RESUMEIQ_SEMANTIC_MODE", "fast").lower()
-        if mode == "sbert":
-            semantic = compute_semantic_similarity(resume_text, jd_text)
+        missing = ats_result["missing_skills"]
+        suggestions = generate_suggestions(
+            ats_score=ats_result["ats_score"],
+            semantic_score=ats_result["semantic_score"],
+            keyword_score=ats_result["keyword_match"],
+            layout_score=ats_result["layout_score"],
+            missing_skills=missing,
+            found_skills=skills,
+            has_jd=has_jd,
+            score_breakdown=ats_result.get("score_breakdown", {}),
+        )
+
+        role_recs = recommend_roles(skills, top_n=3)
+        gap_report = skill_gap_report(skills, missing)
+
+        return {
+            "ats_score": ats_result["ats_score"],
+            "semantic_score": ats_result["semantic_score"],
+            "keyword_match": ats_result["keyword_match"],
+            "layout_score": ats_result["layout_score"],
+            "jd_provided": has_jd,
+            "extracted_skills": skills,
+            "skills_by_category": skills_by_cat,
+            "missing_skills": missing,
+            "matched_skills": ats_result.get("matched_skills", []),
+            "score_breakdown": ats_result.get("score_breakdown", {}),
+            "layout_detail": ats_result.get("layout_detail", {}),
+            "suggestions": suggestions,
+            "role_recommendations": role_recs,
+            "skill_gap_report": gap_report,
+            "contact_info": contact_info,
+            "word_count": parsed["word_count"],
+        }
+
+    else:
+        # ── Fallback path ─────────────────────────────────────────────────────
+        resume_text = _fallback_extract_text(resume_path)
+        skills = _fallback_extract_skills(resume_text)
+
+        if has_jd and resume_text:
+            semantic = _fallback_tfidf(resume_text, jd_text)
+            keyword = _fallback_tfidf(resume_text, jd_text)
+            jd_skills = set(_fallback_extract_skills(jd_text))
+            missing = sorted(jd_skills - set(skills))
+        elif resume_text:
+            quality = _fallback_quality(resume_text, skills)
+            semantic = quality
+            keyword = quality
+            missing = []
         else:
-            semantic = tfidf_keyword_match(resume_text, jd_text)
-        keyword = tfidf_keyword_match(resume_text, jd_text)
-    elif resume_text:
-        # No JD: score resume quality on its own merits
-        quality = resume_quality_score(resume_text)
-        semantic = quality
-        keyword = quality
+            semantic = keyword = 0.0
+            missing = []
 
-    layout = layout_score(resume_path, resume_text)
-    ats = 0.5 * semantic + 0.3 * keyword + 0.2 * layout
+        layout = _fallback_layout(resume_path, resume_text)
+        ats = 0.5 * semantic + 0.3 * keyword + 0.2 * layout
 
-    return {
-        "ats_score": round(ats * 100, 2),
-        "semantic_score": round(semantic, 4),
-        "keyword_match": round(keyword, 4),
-        "layout_score": round(layout, 4),
-        "extracted_skills": resume_skills,
-        "missing_skills": missing_skills,
-        "jd_provided": has_jd,
-    }
+        return {
+            "ats_score": round(ats * 100, 2),
+            "semantic_score": round(semantic, 4),
+            "keyword_match": round(keyword, 4),
+            "layout_score": round(layout, 4),
+            "jd_provided": has_jd,
+            "extracted_skills": skills,
+            "skills_by_category": {},
+            "missing_skills": missing,
+            "matched_skills": [],
+            "score_breakdown": {},
+            "layout_detail": {},
+            "suggestions": [],
+            "role_recommendations": [],
+            "skill_gap_report": {},
+            "contact_info": {},
+            "word_count": len(resume_text.split()),
+        }
 
 
-def generate_suggestions(result: Dict[str, Any], jd_text: str) -> List[str]:
-    """Generate actionable improvement suggestions based on analysis results."""
+def generate_suggestions_for_result(result: Dict[str, Any], jd_text: str) -> List[str]:
+    """Generate suggestions from a stored analysis result dict."""
+    if _ML_AVAILABLE:
+        return generate_suggestions(
+            ats_score=result.get("ats_score", 0),
+            semantic_score=result.get("semantic_score", 0),
+            keyword_score=result.get("keyword_match", 0),
+            layout_score=result.get("layout_score", 0),
+            missing_skills=result.get("missing_skills", []),
+            found_skills=result.get("extracted_skills", []),
+            has_jd=result.get("jd_provided", bool(jd_text and jd_text.strip())),
+            score_breakdown=result.get("score_breakdown", {}),
+        )
+    # Fallback: basic suggestions
     suggestions = []
-    ats = result.get("ats_score", 0)
-    semantic = result.get("semantic_score", 0)
-    keyword = result.get("keyword_match", 0)
-    layout = result.get("layout_score", 0)
-    missing = result.get("missing_skills", [])
-    found = result.get("extracted_skills", [])
-    has_jd = result.get("jd_provided", bool(jd_text and jd_text.strip()))
-
-    if not has_jd:
-        # Resume-only mode suggestions
-        suggestions.append(
-            "No job description was provided. These scores reflect your resume's standalone quality. "
-            "For a full ATS analysis with semantic matching and skill gap detection, paste a job description and re-analyze."
-        )
-        if semantic < 0.5:
-            suggestions.append(
-                "Your resume quality score is below 50%. Add more recognized technical skills, "
-                "use strong action verbs (Developed, Built, Optimized, Led), and enrich your content."
-            )
-        if len(found) < 8:
-            suggestions.append(
-                "Only a few technical skills were detected. Add a dedicated Skills section listing "
-                "all relevant technologies, tools, frameworks, and languages you know."
-            )
-        if layout < 0.6:
-            suggestions.append(
-                "Improve your resume structure. Ensure clearly labeled sections: Summary, Experience, "
-                "Education, Skills, Projects, and Certifications."
-            )
-        suggestions.append(
-            "Use strong action verbs at the start of each bullet: Developed, Architected, Optimized, "
-            "Led, Delivered, Reduced, Increased, Automated."
-        )
-        suggestions.append(
-            "Quantify your achievements with numbers — e.g., 'Improved API response time by 40%' "
-            "or 'Built a system serving 10,000+ users'."
-        )
-        return suggestions
-
-    # JD-provided mode suggestions
-    if ats < 50:
-        suggestions.append(
-            "Your ATS score is below 50%. Focus on tailoring your resume specifically to the job description by mirroring its language and keywords."
-        )
-
-    if semantic < 0.3:
-        suggestions.append(
-            "Semantic similarity is low. Rewrite your professional summary and experience bullets to align more closely with the job description's context and terminology."
-        )
-
-    if keyword < 0.3:
-        suggestions.append(
-            "Keyword match is low. Identify the most important technical and soft skill keywords from the job description and incorporate them naturally into your resume."
-        )
-
-    if layout < 0.6:
-        suggestions.append(
-            "Improve your resume structure. Ensure you have clearly labeled sections: Summary, Experience, Education, Skills, Projects, and Certifications."
-        )
-
-    if missing:
-        top_missing = missing[:5]
-        suggestions.append(
-            f"Add these missing skills to your resume if you have them: {', '.join(top_missing)}. "
-            "Even brief mentions in project descriptions count."
-        )
-
-    if len(found) < 5:
-        suggestions.append(
-            "Your resume lists very few recognizable technical skills. Add a dedicated Skills section with relevant technologies, tools, and frameworks."
-        )
-
-    if not suggestions:
-        suggestions.append(
-            "Your resume is well-optimized! Consider quantifying your achievements with numbers (e.g., 'improved performance by 30%') to further stand out."
-        )
-        suggestions.append(
-            "Use strong action verbs at the start of each bullet point: Developed, Architected, Optimized, Led, Delivered, Reduced, Increased."
-        )
-
-    suggestions.append(
-        "Ensure your resume is in a clean, single-column ATS-friendly format. Avoid tables, graphics, and headers/footers that ATS systems may not parse correctly."
-    )
-
+    if result.get("ats_score", 0) < 50:
+        suggestions.append("Your ATS score is below 50%. Tailor your resume to the job description.")
+    if result.get("missing_skills"):
+        suggestions.append(f"Add missing skills: {', '.join(result['missing_skills'][:5])}")
     return suggestions

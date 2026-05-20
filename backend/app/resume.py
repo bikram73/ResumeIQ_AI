@@ -7,7 +7,7 @@ import shutil
 
 from .database import get_db
 from .models import Resume, Analysis, User
-from .ai.pipeline import analyze_resume, generate_suggestions
+from .ai.pipeline import analyze_resume, generate_suggestions_for_result
 from .auth import get_current_user
 
 router = APIRouter()
@@ -26,8 +26,8 @@ async def upload_resume(
     if not file.filename.lower().endswith('.pdf'):
         return JSONResponse({"detail": "Only PDF files are supported."}, status_code=400)
 
-    analysis_id = str(uuid.uuid4())
-    filename = f"{analysis_id}_{file.filename}"
+    uid = str(uuid.uuid4())
+    filename = f"{uid}_{file.filename}"
     dest_path = os.path.join(UPLOAD_DIR, filename)
 
     with open(dest_path, "wb") as dest:
@@ -62,11 +62,13 @@ async def analyze(
     try:
         result = analyze_resume(db_resume.resume_url, job_description or "")
 
-        db_resume.ats_score = result.get("ats_score", 0.0)
-        db_resume.semantic_score = result.get("semantic_score", 0.0)
-        db_resume.keyword_match = result.get("keyword_match", 0.0)
-        db_resume.layout_score = result.get("layout_score", 0.0)
+        # Persist scores
+        db_resume.ats_score = result["ats_score"]
+        db_resume.semantic_score = result["semantic_score"]
+        db_resume.keyword_match = result["keyword_match"]
+        db_resume.layout_score = result["layout_score"]
 
+        # Persist analysis
         db_analysis = db.query(Analysis).filter(Analysis.resume_id == resume_id).first()
         if not db_analysis:
             db_analysis = Analysis(resume_id=db_resume.id)
@@ -74,13 +76,14 @@ async def analyze(
 
         db_analysis.keywords = result.get("extracted_skills", [])
         db_analysis.missing_skills = result.get("missing_skills", [])
-        db_analysis.suggestions = generate_suggestions(result, job_description or "")
+        db_analysis.suggestions = result.get("suggestions", [])
         db_analysis.jd_provided = 1 if result.get("jd_provided") else 0
 
         db.commit()
 
         result["analysis_id"] = str(resume_id)
         return result
+
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
@@ -158,3 +161,37 @@ def get_suggestions(
 
     db_analysis = db.query(Analysis).filter(Analysis.resume_id == resume_id).first()
     return {"suggestions": db_analysis.suggestions if db_analysis else []}
+
+
+@router.get("/roles/{analysis_id}")
+def get_role_recommendations(
+    analysis_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Return job role recommendations based on detected skills."""
+    try:
+        resume_id = int(analysis_id)
+    except ValueError:
+        return JSONResponse({"error": "invalid analysis_id"}, status_code=400)
+
+    db_resume = db.query(Resume).filter(
+        Resume.id == resume_id, Resume.user_id == current_user.id
+    ).first()
+    if not db_resume:
+        return JSONResponse({"error": "not found"}, status_code=404)
+
+    db_analysis = db.query(Analysis).filter(Analysis.resume_id == resume_id).first()
+    skills = db_analysis.keywords if db_analysis else []
+
+    try:
+        import sys, os
+        ml_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'ml-models'))
+        if ml_path not in sys.path:
+            sys.path.insert(0, ml_path)
+        from recommendation.engine import recommend_roles
+        roles = recommend_roles(skills, top_n=5)
+    except Exception:
+        roles = []
+
+    return {"role_recommendations": roles}

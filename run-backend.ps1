@@ -1,2 +1,2 @@
 Set-Location backend
-python -m uvicorn app.main:app --reload --port 8000
+python -B -m uvicorn app.main:app --port 8000

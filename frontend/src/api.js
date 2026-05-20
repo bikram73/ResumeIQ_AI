@@ -74,3 +74,8 @@ export async function getSuggestions(analysisId) {
   const res = await api.get(`/suggestions/${analysisId}`)
   return res.data
 }
+
+export async function getRoleRecommendations(analysisId) {
+  const res = await api.get(`/roles/${analysisId}`)
+  return res.data
+}

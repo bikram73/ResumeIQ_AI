@@ -9,12 +9,13 @@
 [![React](https://img.shields.io/badge/React-18.2-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev/)
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org/)
 [![Vite](https://img.shields.io/badge/Vite-5.0-646CFF?style=flat-square&logo=vite&logoColor=white)](https://vitejs.dev/)
+[![scikit-learn](https://img.shields.io/badge/scikit--learn-1.4-F7931E?style=flat-square&logo=scikitlearn&logoColor=white)](https://scikit-learn.org/)
 [![SQLite](https://img.shields.io/badge/SQLite-Database-003B57?style=flat-square&logo=sqlite&logoColor=white)](https://sqlite.org/)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
-> **Multi-Granularity Multi-Modal AI Resume Analyzer** — Analyze, optimize, and improve resumes using NLP, Semantic Similarity, TF-IDF, and ATS Compatibility Scoring.
+> **Multi-Granularity Multi-Modal AI Resume Analyzer** — Analyze, optimize, and improve resumes using a dedicated ML models package, NLP, Semantic Similarity, TF-IDF, ATS Scoring, and Job Role Recommendations.
 
-[🚀 Live Demo](#) · [📖 Docs](#api-endpoints) · [🐛 Report Bug](#) · [✨ Request Feature](#)
+[🚀 Live Demo](#) · [📖 Docs](#-api-endpoints) · [🤖 ML Models](#-ml-models-package) · [🐛 Report Bug](#)
 
 ---
 
@@ -29,12 +30,12 @@
 - [✨ Features](#-features)
 - [🛠️ Tech Stack](#️-tech-stack)
 - [📁 Project Structure](#-project-structure)
+- [🤖 ML Models Package](#-ml-models-package)
 - [⚙️ Installation](#️-installation)
 - [🚀 Running the Project](#-running-the-project)
 - [🔌 API Endpoints](#-api-endpoints)
 - [🧠 AI Scoring Logic](#-ai-scoring-logic)
 - [🎨 UI Design System](#-ui-design-system)
-- [📸 Screenshots](#-screenshots)
 - [🗺️ Roadmap](#️-roadmap)
 - [🤝 Contributing](#-contributing)
 
@@ -45,12 +46,16 @@
 ### 🎯 Core Analysis
 | Feature | Description |
 |---|---|
-| 📊 **ATS Score** | Weighted AI formula: `0.5×Semantic + 0.3×Keywords + 0.2×Layout` |
-| 🧠 **Semantic Matching** | TF-IDF cosine similarity (SBERT-ready) between resume and JD |
-| 🔍 **Keyword Analysis** | TF-IDF overlap detection against job description |
-| 📐 **Layout Scoring** | Section detection, file size, and word count heuristics |
-| 🕳️ **Skill Gap Detection** | Identifies skills in JD missing from resume |
-| 💡 **AI Suggestions** | Actionable improvement tips based on score breakdown |
+| 📊 **ATS Score** | Weighted formula: `0.5×Semantic + 0.3×Keywords + 0.2×Layout` with full sub-score breakdown |
+| 🧠 **Semantic Matching** | Bigram TF-IDF cosine similarity (SBERT switchable via env var) |
+| 🔍 **Keyword Analysis** | TF-IDF cosine (60%) + skill overlap (40%) against job description |
+| 📐 **Layout Scoring** | Section coverage + file size + word count + bullet formatting |
+| 🕳️ **Skill Gap Detection** | Identifies JD skills missing from resume with learning resource links |
+| 💡 **AI Suggestions** | Prioritized, actionable improvement tips for both JD and quality modes |
+| 🎯 **Job Role Recommendations** | Matches detected skills against 14 role profiles with match % |
+| 📂 **Skills by Category** | Skills grouped into languages, frameworks, databases, cloud/devops, tools, practices |
+| 🔄 **Resume Quality Mode** | Standalone scoring when no JD provided (skill density + action verbs + quantification) |
+| 📄 **Multi-layer PDF Extraction** | pdfplumber → PyMuPDF → pytesseract OCR fallback chain |
 
 ### 🖥️ Application Pages
 | Page | Route | Description |
@@ -59,8 +64,8 @@
 | 🔐 **Login** | `/login` | JWT-based authentication |
 | 📝 **Register** | `/register` | Account creation |
 | 📊 **Dashboard** | `/dashboard` | Score history, radar chart, bar chart |
-| 📤 **Upload & Analyze** | `/upload` | Drag-and-drop PDF upload + JD input |
-| 📈 **Results** | `/results/:id` | Full analysis breakdown |
+| 📤 **Upload & Analyze** | `/upload` | Drag-and-drop PDF upload + JD input (3-step) |
+| 📈 **Results** | `/results/:id` | Full analysis: scores, skills by category, skill gap, suggestions, role recommendations |
 | 👤 **Profile** | `/profile` | User account info |
 
 ### 🔒 Security
@@ -69,6 +74,7 @@
 - ✅ Protected routes (frontend + backend)
 - ✅ File type & size validation (PDF only, max 10MB)
 - ✅ Per-user data isolation
+- ✅ 401 auto-redirect on expired tokens
 
 ---
 
@@ -81,7 +87,7 @@
 | 🔀 React Router DOM | 6.22 | Client-side routing |
 | 📊 Recharts | 2.10 | Radar & bar charts |
 | 🎬 Framer Motion | 11.0 | Animations |
-| 🌐 Axios | 1.4 | HTTP client |
+| 🌐 Axios | 1.4 | HTTP client with JWT interceptor |
 | ⚡ Vite | 5.0 | Build tool & dev server |
 
 ### ⚙️ Backend
@@ -89,17 +95,19 @@
 |---|---|---|
 | 🐍 Python | 3.10+ | Runtime |
 | 🚀 FastAPI | 0.111 | REST API framework |
-| 🦄 Uvicorn | 0.29 | ASGI server |
+| 🦄 Uvicorn | 0.29 | ASGI server (`-B` flag, no bytecode cache) |
 | 🗄️ SQLAlchemy | 2.0 | ORM |
 | 🔐 python-jose | 3.3 | JWT tokens |
 | 🔑 passlib[bcrypt] | 1.7 | Password hashing |
-| 📄 pdfplumber | 0.11 | PDF text extraction |
 
-### 🤖 AI / ML
+### 🤖 ML Models Package (`ml-models/`)
 | Technology | Purpose |
 |---|---|
-| 🔢 scikit-learn (TF-IDF) | Keyword & semantic similarity |
-| 🤗 sentence-transformers | SBERT semantic embeddings (optional) |
+| 📄 pdfplumber | Primary PDF text extraction |
+| 📄 PyMuPDF (fitz) | Fallback PDF extraction |
+| 👁️ pytesseract | OCR fallback for scanned PDFs |
+| 🔢 scikit-learn TF-IDF | Bigram keyword & semantic similarity |
+| 🤗 sentence-transformers | SBERT all-MiniLM-L6-v2 (optional, switchable) |
 | 📐 NumPy | Vector math |
 | 🗃️ SQLite | Local development database |
 
@@ -110,68 +118,102 @@
 ```
 ResumeIQ_AI/
 │
-├── 📄 README.md                    # This file
+├── 📄 README.md
 ├── 📄 .gitignore
-├── ▶️  run-backend.ps1              # Backend start script (Windows)
-├── ▶️  run-frontend.ps1             # Frontend start script (Windows)
+├── ▶️  run-backend.ps1              # python -B -m uvicorn (no bytecode cache)
+├── ▶️  run-frontend.ps1
 │
-├── 🎨 frontend/                    # React + Vite application
-│   ├── 📄 index.html               # HTML entry point (Google Fonts)
-│   ├── 📄 vite.config.js           # Vite + React plugin config
-│   ├── 📄 package.json             # Node dependencies
-│   │
+├── 🎨 frontend/
+│   ├── 📄 index.html
+│   ├── 📄 vite.config.js
+│   ├── 📄 package.json
 │   └── src/
-│       ├── 📄 main.jsx             # App entry — BrowserRouter + AuthProvider
-│       ├── 📄 App.jsx              # Route definitions + Protected wrapper
-│       ├── 📄 AuthContext.jsx      # Global auth state (JWT + user profile)
-│       ├── 📄 api.js               # Axios API client (auto-attaches JWT)
-│       ├── 📄 styles.css           # Global CSS variables + utility classes
-│       │
+│       ├── 📄 main.jsx             # BrowserRouter + AuthProvider
+│       ├── 📄 App.jsx              # Routes + Protected wrapper
+│       ├── 📄 AuthContext.jsx      # JWT auth state
+│       ├── 📄 api.js               # Axios client (JWT + 401 interceptor)
+│       ├── 📄 styles.css           # CSS variables + utility classes
 │       ├── components/
-│       │   ├── 📄 Navbar.jsx       # Sticky nav with auth-aware links
-│       │   ├── 📄 Blobs.jsx        # Animated background gradient blobs
-│       │   └── 📄 ScoreCard.jsx    # Reusable score display card
-│       │
+│       │   ├── 📄 Navbar.jsx
+│       │   ├── 📄 Blobs.jsx
+│       │   └── 📄 ScoreCard.jsx
 │       └── pages/
-│           ├── 📄 Home.jsx         # Landing page (hero, features, steps, CTA)
-│           ├── 📄 Login.jsx        # Sign-in form
-│           ├── 📄 Register.jsx     # Sign-up form
-│           ├── 📄 Dashboard.jsx    # Analytics dashboard (charts + history)
-│           ├── 📄 Upload.jsx       # Resume upload + JD input (3-step flow)
-│           ├── 📄 Results.jsx      # Full analysis results page
-│           └── 📄 Profile.jsx      # User profile & account actions
+│           ├── 📄 Home.jsx
+│           ├── 📄 Login.jsx
+│           ├── 📄 Register.jsx
+│           ├── 📄 Dashboard.jsx    # Radar + bar charts + resume history
+│           ├── 📄 Upload.jsx       # 3-step: upload → JD → analyze
+│           ├── 📄 Results.jsx      # Scores + skills by category + roles + suggestions
+│           └── 📄 Profile.jsx
 │
-├── ⚙️  backend/                    # FastAPI Python application
-│   ├── 📄 requirements.txt         # Python dependencies (pinned)
-│   ├── 📄 resumeiq.db              # SQLite database (auto-created)
-│   │
-│   ├── uploads/                    # Uploaded PDF files (UUID-prefixed)
-│   │
+├── ⚙️  backend/
+│   ├── 📄 requirements.txt
+│   ├── 📄 .env.example
+│   ├── 📄 resumeiq.db              # SQLite (auto-created)
+│   ├── uploads/                    # UUID-prefixed PDFs
 │   └── app/
-│       ├── 📄 __init__.py
-│       ├── 📄 main.py              # FastAPI app, CORS, router registration
-│       ├── 📄 database.py          # SQLAlchemy engine + session + Base
-│       ├── 📄 models.py            # ORM models: User, Resume, Analysis
-│       ├── 📄 auth.py              # JWT auth, register/login/me endpoints
-│       ├── 📄 resume.py            # Upload, analyze, results, history endpoints
-│       │
+│       ├── 📄 main.py              # FastAPI app + CORS
+│       ├── 📄 database.py          # SQLAlchemy engine
+│       ├── 📄 models.py            # User, Resume, Analysis ORM models
+│       ├── 📄 auth.py              # register / login / me
+│       ├── 📄 resume.py            # upload / analyze / results / resumes / suggestions / roles
 │       └── ai/
-│           └── 📄 pipeline.py      # Core AI engine:
-│                                   #   • PDF text extraction (pdfplumber)
-│                                   #   • Skill extraction (regex + COMMON_SKILLS)
-│                                   #   • TF-IDF keyword match
-│                                   #   • SBERT semantic similarity (optional)
-│                                   #   • Layout scoring (sections + size + words)
-│                                   #   • Resume quality scoring (no-JD mode)
-│                                   #   • ATS score formula
-│                                   #   • AI suggestion generation
+│           └── 📄 pipeline.py      # Delegates to ml-models; inline fallback if import fails
 │
-├── 🤖 ml-models/                   # ML model assets (future expansion)
-│   └── 📄 README.md
+├── 🤖 ml-models/                   # Standalone ML package (imported by pipeline.py)
+│   ├── 📄 __init__.py
+│   ├── 📄 README.md
+│   ├── embeddings/
+│   │   └── 📄 semantic.py          # tfidf_similarity, sbert_similarity, keyword_overlap
+│   ├── parsers/
+│   │   └── 📄 extractor.py         # extract_text, parse_resume, extract_skills_by_category
+│   ├── scoring/
+│   │   └── 📄 ats_scorer.py        # compute_ats_score, score_layout, score_keywords, score_quality
+│   └── recommendation/
+│       └── 📄 engine.py            # generate_suggestions, recommend_roles, skill_gap_report
 │
 └── 📚 docs/
-    └── 📄 synopsis.md              # Project synopsis
+    └── 📄 synopsis.md
 ```
+
+---
+
+## 🤖 ML Models Package
+
+The `ml-models/` directory is a standalone Python package with four modules. The backend `pipeline.py` adds it to `sys.path` at runtime and falls back to inline implementations if the import fails.
+
+### `parsers.extractor`
+- **3-layer PDF extraction**: pdfplumber → PyMuPDF → pytesseract OCR
+- **100+ skill taxonomy** across 6 categories
+- **Section detection**: summary, experience, education, skills, projects, certifications
+- **Contact extraction**: email, phone, LinkedIn, GitHub, website
+
+### `embeddings.semantic`
+- `tfidf_similarity` — bigram TF-IDF cosine (default, fast)
+- `sbert_similarity` — SBERT all-MiniLM-L6-v2 (set `RESUMEIQ_SEMANTIC_MODE=sbert`)
+- `keyword_overlap` — fraction of JD keywords present in resume
+
+### `scoring.ats_scorer`
+- `score_layout` — section coverage (40%) + file size (30%) + word count (20%) + bullet formatting (10%)
+- `score_keywords` — TF-IDF cosine (60%) + skill overlap (40%)
+- `score_quality` — skill density (35%) + action verbs (25%) + content richness (25%) + quantification (15%)
+- `compute_ats_score` — assembles full ATS score with `score_breakdown` dict
+
+### `recommendation.engine`
+- `generate_suggestions` — prioritized tips, different logic for JD mode vs quality mode
+- `recommend_roles` — matches skills against 14 role profiles (Software Engineer, Data Scientist, DevOps, ML Engineer, etc.)
+- `skill_gap_report` — missing skills with direct learning resource URLs
+
+### Skill Taxonomy (100+ skills)
+
+| Category | Examples |
+|---|---|
+| languages | python, javascript, typescript, java, go, rust, sql, html, css |
+| frameworks | react, fastapi, django, tensorflow, pytorch, scikit-learn, pandas, langchain |
+| databases | postgresql, mongodb, redis, elasticsearch, dynamodb, firebase |
+| cloud_devops | aws, azure, gcp, docker, kubernetes, terraform, ci/cd, github actions |
+| tools | git, graphql, kafka, airflow, tableau, power bi, figma, jupyter |
+| practices | machine learning, deep learning, nlp, agile, microservices, mlops, devops |
 
 ---
 
@@ -195,13 +237,12 @@ cd ResumeIQ-AI
 ### 2️⃣ Backend Setup
 
 ```bash
-# Navigate to backend
 cd backend
 
-# Create a virtual environment (recommended)
+# Create virtual environment (recommended)
 python -m venv .venv
 
-# Activate virtual environment
+# Activate
 # Windows:
 .venv\Scripts\activate
 # macOS/Linux:
@@ -211,7 +252,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-**`requirements.txt` includes:**
+**`requirements.txt`:**
 ```
 fastapi==0.111.0
 uvicorn[standard]==0.29.0
@@ -221,18 +262,16 @@ sqlalchemy==2.0.30
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 pdfplumber==0.11.0
+pymupdf==1.24.0
 scikit-learn==1.4.2
 numpy==1.26.4
-sentence-transformers==2.7.0   # optional — for SBERT mode
+sentence-transformers==2.7.0   # optional — SBERT mode
 ```
 
 ### 3️⃣ Frontend Setup
 
 ```bash
-# Navigate to frontend
 cd frontend
-
-# Install Node dependencies
 npm install
 ```
 
@@ -243,22 +282,24 @@ npm install
 ### Option A — PowerShell Scripts (Windows)
 
 ```powershell
-# Terminal 1 — Start backend
+# Terminal 1
 .\run-backend.ps1
 
-# Terminal 2 — Start frontend
+# Terminal 2
 .\run-frontend.ps1
 ```
 
 ### Option B — Manual
 
 ```bash
-# Terminal 1 — Backend (from /backend directory)
-python -m uvicorn app.main:app --reload --port 8000
+# Terminal 1 — from /backend
+python -B -m uvicorn app.main:app --port 8000
 
-# Terminal 2 — Frontend (from /frontend directory)
+# Terminal 2 — from /frontend
 npm run dev
 ```
+
+> **Important:** Use `python -B` to prevent stale `.pyc` bytecode from being loaded. The run scripts already include this flag.
 
 ### 🌐 Access the App
 
@@ -269,19 +310,19 @@ npm run dev
 | 📖 Swagger Docs | http://localhost:8000/docs |
 | 📖 ReDoc | http://localhost:8000/redoc |
 
-### 🔧 Environment Variables (Optional)
+### 🔧 Environment Variables
 
-Create a `.env` file in `/backend` to override defaults:
+Copy `backend/.env.example` to `backend/.env`:
 
 ```env
-# Database (defaults to SQLite)
+# Database — defaults to SQLite, use PostgreSQL URL for production
 DATABASE_URL=sqlite:///./resumeiq.db
 
-# JWT secret key (change in production!)
+# JWT secret — change in production!
 SECRET_KEY=your-super-secret-key-here
 
-# AI mode: "fast" (TF-IDF) or "sbert" (sentence-transformers)
-RESUMEIQ_SEMANTIC_MODE=fast
+# Semantic engine: "tfidf" (fast, default) or "sbert" (accurate, needs ~90MB RAM)
+RESUMEIQ_SEMANTIC_MODE=tfidf
 ```
 
 ---
@@ -292,49 +333,55 @@ RESUMEIQ_SEMANTIC_MODE=fast
 
 | Method | Endpoint | Description | Auth |
 |---|---|---|---|
-| `POST` | `/auth/register` | Create new account | ❌ |
+| `POST` | `/auth/register` | Create account | ❌ |
 | `POST` | `/auth/login` | Login, returns JWT | ❌ |
-| `GET` | `/auth/me` | Get current user profile | ✅ |
+| `GET` | `/auth/me` | Current user profile | ✅ |
 
-### 📄 Resume — `/`
+### 📄 Resume
 
 | Method | Endpoint | Description | Auth |
 |---|---|---|---|
-| `POST` | `/upload-resume` | Upload PDF resume | ✅ |
-| `POST` | `/analyze` | Run AI analysis | ✅ |
-| `GET` | `/results/{id}` | Get stored results | ✅ |
-| `GET` | `/resumes` | Get resume history | ✅ |
-| `GET` | `/suggestions/{id}` | Get AI suggestions | ✅ |
+| `POST` | `/upload-resume` | Upload PDF | ✅ |
+| `POST` | `/analyze` | Run full ML analysis | ✅ |
+| `GET` | `/results/{id}` | Stored analysis results | ✅ |
+| `GET` | `/resumes` | Resume history | ✅ |
+| `GET` | `/suggestions/{id}` | AI improvement suggestions | ✅ |
+| `GET` | `/roles/{id}` | Job role recommendations | ✅ |
 
-### 📦 Request / Response Examples
+### 📦 Analyze Response (full)
 
-**Register**
 ```json
-POST /auth/register
-{
-  "name": "John Doe",
-  "email": "john@example.com",
-  "password": "securepassword"
+POST /analyze  →  {
+  "ats_score": 72.4,
+  "semantic_score": 0.68,
+  "keyword_match": 0.71,
+  "layout_score": 0.80,
+  "jd_provided": true,
+  "extracted_skills": ["python", "fastapi", "docker"],
+  "skills_by_category": {
+    "languages": ["python"],
+    "frameworks": ["fastapi"],
+    "cloud_devops": ["docker"]
+  },
+  "missing_skills": ["kubernetes", "terraform"],
+  "matched_skills": ["python", "fastapi", "docker"],
+  "score_breakdown": {
+    "semantic": 0.68,
+    "keyword": { "tfidf_cosine": 0.65, "skill_overlap": 0.80 },
+    "layout": { "section_coverage": 1.0, "word_count_score": 0.95 }
+  },
+  "suggestions": ["Add missing skills: kubernetes, terraform..."],
+  "role_recommendations": [
+    { "role": "Backend Developer", "match_percent": 85.0, "matched_skills": [...] }
+  ],
+  "skill_gap_report": {
+    "gaps_with_resources": [
+      { "skill": "kubernetes", "resource": "https://kubernetes.io/docs/tutorials/", "priority": "medium" }
+    ]
+  },
+  "contact_info": { "email": "user@example.com", "github": "github.com/user" },
+  "word_count": 412
 }
-→ { "access_token": "eyJ...", "token_type": "bearer" }
-```
-
-**Analyze Resume**
-```
-POST /analyze
-Form data:
-  analysis_id: "3"
-  job_description: "We are looking for a Python developer..."
-
-→ {
-    "ats_score": 72.4,
-    "semantic_score": 0.68,
-    "keyword_match": 0.71,
-    "layout_score": 0.80,
-    "extracted_skills": ["python", "flask", "sql", ...],
-    "missing_skills": ["docker", "kubernetes"],
-    "jd_provided": true
-  }
 ```
 
 ---
@@ -344,44 +391,31 @@ Form data:
 ### ATS Score Formula
 
 ```
-ATS Score = (0.5 × Semantic) + (0.3 × Keywords) + (0.2 × Layout)
+ATS Score = (0.50 × Semantic) + (0.30 × Keywords) + (0.20 × Layout)
 ```
 
-### 📊 With Job Description (Full Mode)
+### With Job Description
+
+| Component | Sub-components | Weight |
+|---|---|---|
+| **Semantic** | TF-IDF bigram cosine similarity (or SBERT) | 50% |
+| **Keywords** | TF-IDF cosine (60%) + skill overlap (40%) | 30% |
+| **Layout** | Section coverage (40%) + file size (30%) + word count (20%) + formatting (10%) | 20% |
+
+### Without Job Description (Quality Mode)
 
 | Component | Method | Weight |
 |---|---|---|
-| **Semantic Score** | TF-IDF cosine similarity (or SBERT) between resume and JD | 50% |
-| **Keyword Match** | TF-IDF overlap of resume vs JD vocabulary | 30% |
-| **Layout Score** | Section detection + file size + word count heuristics | 20% |
+| **Skill Density** | recognized skills / 15 | 35% |
+| **Action Verbs** | strong verb count / 10 | 25% |
+| **Content Richness** | unique word ratio / 0.65 | 25% |
+| **Quantification** | numbers/metrics count / 5 | 15% |
 
-### 📋 Without Job Description (Quality Mode)
-
-When no JD is provided, the system scores the resume on its own merits:
-
-| Component | Method | Weight |
-|---|---|---|
-| **Skill Density** | # of recognized skills / 15 (capped at 1.0) | 40% |
-| **Action Verbs** | Count of strong verbs (developed, built, led...) / 8 | 30% |
-| **Content Richness** | Unique word ratio / 0.65 | 30% |
-
-### 🗂️ Layout Score Breakdown
-
-| Factor | Weight | Criteria |
-|---|---|---|
-| Section Detection | 40% | Presence of: Experience, Education, Skills, Projects, Certifications, Summary |
-| File Size | 40% | Optimal: 10KB–300KB |
-| Word Count | 20% | Optimal: 300–1500 words |
-
-### 🤖 Skill Detection
-
-The engine scans for **50+ recognized skills** including:
+### PDF Extraction Chain
 
 ```
-Python, Java, JavaScript, React, Node.js, SQL, AWS, Docker, Kubernetes,
-Machine Learning, FastAPI, TypeScript, NLP, Deep Learning, MongoDB,
-PostgreSQL, Git, TensorFlow, PyTorch, Django, Flask, Pandas, NumPy,
-Redis, GraphQL, REST API, Microservices, CI/CD, Azure, GCP, and more...
+pdfplumber  →  PyMuPDF (fitz)  →  pytesseract OCR
+   (text PDFs)    (complex layouts)    (scanned/image PDFs)
 ```
 
 ---
@@ -393,25 +427,18 @@ Redis, GraphQL, REST API, Microservices, CI/CD, Azure, GCP, and more...
 | Token | Hex | Usage |
 |---|---|---|
 | `--primary` | `#6C63FF` | Buttons, accents, links |
-| `--secondary` | `#8B5CF6` | Gradients, tags |
-| `--accent` | `#00D4FF` | Highlights, layout score |
+| `--secondary` | `#8B5CF6` | Gradients, skill tags |
+| `--accent` | `#00D4FF` | Layout score, highlights |
 | `--bg` | `#0F172A` | Page background |
-| `--card` | `rgba(255,255,255,0.06)` | Glass cards |
-| `--success` | `#10B981` | High scores, success states |
-| `--warning` | `#F59E0B` | Medium scores, warnings |
-| `--danger` | `#EF4444` | Low scores, errors |
-
-### Typography
-
-| Role | Font | Weight |
-|---|---|---|
-| Headings | Poppins | 600–800 |
-| Body | Inter | 300–600 |
+| `--card` | `rgba(255,255,255,0.06)` | Glassmorphism cards |
+| `--success` | `#10B981` | High scores (≥70%) |
+| `--warning` | `#F59E0B` | Medium scores (50–70%) |
+| `--danger` | `#EF4444` | Low scores (<50%) |
 
 ### Design Features
-- 🪟 **Glassmorphism** cards with `backdrop-filter: blur(12px)`
+- 🪟 **Glassmorphism** cards — `backdrop-filter: blur(12px)`
 - 🌈 **Animated gradient blobs** in background
-- 💜 **Neon glow buttons** with box-shadow on hover
+- 💜 **Neon glow buttons** with hover box-shadow
 - 📱 **Fully responsive** — desktop, tablet, mobile
 - 🌙 **Dark theme** throughout
 
@@ -422,15 +449,19 @@ Redis, GraphQL, REST API, Microservices, CI/CD, Azure, GCP, and more...
 - [x] 🔐 JWT Authentication (register / login / profile)
 - [x] 📤 PDF Resume Upload with drag-and-drop
 - [x] 🧠 TF-IDF Semantic & Keyword Analysis
-- [x] 📊 ATS Score with weighted formula
-- [x] 🕳️ Skill Gap Detection
-- [x] 💡 AI Improvement Suggestions
+- [x] 📊 ATS Score with multi-granularity breakdown
+- [x] 🕳️ Skill Gap Detection with learning resources
+- [x] 💡 AI Improvement Suggestions (JD + quality modes)
 - [x] 📈 Dashboard with Radar & Bar charts
 - [x] 📋 Resume history per user
-- [x] 🔄 Resume Quality Mode (no-JD analysis)
-- [ ] 🤗 SBERT deep semantic matching (set `RESUMEIQ_SEMANTIC_MODE=sbert`)
+- [x] 🔄 Resume Quality Mode (no-JD standalone scoring)
+- [x] 🤖 ML Models package (parsers / embeddings / scoring / recommendation)
+- [x] 🎯 Job Role Recommendations (14 role profiles)
+- [x] 📂 Skills by Category (6 categories, 100+ skills)
+- [x] 📄 Multi-layer PDF extraction (pdfplumber → PyMuPDF → OCR)
+- [x] 🔌 `/roles` endpoint for role recommendations
+- [ ] 🤗 SBERT deep semantic matching (`RESUMEIQ_SEMANTIC_MODE=sbert`)
 - [ ] 📝 Resume Builder with live editing
-- [ ] 💼 Job Recommendation Engine
 - [ ] 🗣️ AI Cover Letter Generator
 - [ ] 🔗 LinkedIn Profile Optimizer
 - [ ] 🐳 Docker Compose deployment
@@ -440,27 +471,18 @@ Redis, GraphQL, REST API, Microservices, CI/CD, Azure, GCP, and more...
 
 ## 🤝 Contributing
 
-Contributions are welcome!
-
 ```bash
-# 1. Fork the repo
-# 2. Create your feature branch
 git checkout -b feature/AmazingFeature
-
-# 3. Commit your changes
 git commit -m 'Add AmazingFeature'
-
-# 4. Push to the branch
 git push origin feature/AmazingFeature
-
-# 5. Open a Pull Request
+# Open a Pull Request
 ```
 
 ---
 
 ## 📄 License
 
-Distributed under the MIT License. See `LICENSE` for more information.
+MIT License. See `LICENSE` for details.
 
 ---
 
